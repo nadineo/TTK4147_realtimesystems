@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <semaphore.h>
 
 static pthread_mutex_t udp_mtx;
 
@@ -12,16 +13,23 @@ static char* strMessages[] = {"START", "GET", "SET", "STOP", "SIGNAL_ACK"};
 //shared resource for buffer cnt 
 static sem_t semaCntYVal;
 
+
+static pthread_mutex_t mtxBuffer;
+static ring_buf_t* ringBuf;
+
+
+static UDPConn* conn;
+
 // ---------------------------------------------
 // initializes udp communication
 // ---------------------------------------------
 void init_communication(){
 	//set up udp socket
-	UDPConn* conn = udpconn_new("127.0.0.1", 9999)
+	conn = udpconn_new("127.0.0.1", 9999);
     
 
 	//initialization of ringBuf
-	ring_buf_t* ringBuf = malloc(sizeof(ring_buf_t));
+	ringBuf = malloc(sizeof(ring_buf_t));
 	ringBuf->head = 0;
 	ringBuf->tail = 0;
 
@@ -49,21 +57,21 @@ void send_msg(enMessage msg, float val){
 
 void receive_msg(char* recvBuf){
 	   
-    udpconn_recv(conn, recvBuf, sizeof(recvBuf));
+   udpconn_receive(conn, recvBuf, sizeof(recvBuf));
 
 }
 
 
 void put_item_in_buffer(float val){
 	
-
-	bufIdx = (bufIdx +1)%BUF_LEN;
 	//store y val in buffer
-	pthread_mutex_lock(mtxBuffer);
+	pthread_mutex_lock(&mtxBuffer);
+
 	ringBuf->buffer[ringBuf->tail] = val;
 	ringBuf->tail = (ringBuf->tail +1)%BUF_LEN;
+
 	//unlock buffer
-	pthread_mutex_unlock(mtxBuffer);
+	pthread_mutex_unlock(&mtxBuffer);
 	//post semaphore
 	sem_post(&semaCntYVal);
 
@@ -73,11 +81,11 @@ float get_item_from_buffer(){
 	float val;
 	sem_wait(&semaCntYVal);
 	//lock buffer
-	pthread_mutex_lock(mtxBuffer);
+	pthread_mutex_lock(&mtxBuffer);
 	val = ringBuf->buffer[ringBuf->head];
 	ringBuf->head = (ringBuf->head+1)%BUF_LEN;
 	//unlock buffer
-	pthread_mutex_unlock(mtxBuffer);
+	pthread_mutex_unlock(&mtxBuffer);
 	
 
 }
